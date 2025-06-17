@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "80507381205",
+    "project_id": "luna-cool-project",
+    "storage_bucket": "luna-cool-project.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:80507381205:android:9cf01aafa948e415f0495c",
+        "android_client_info": {
+          "package_name": "com.example.luna"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "80507381205-7scogsf5kekjgs3ttgq6m7ruautalf2o.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.luna",
+            "certificate_hash": "d8232ab58156ab490e4b29573e2057514ffd9083"
+          }
+        },
+        {
+          "client_id": "80507381205-vfcji52jj0annmj05ljpqadekp0ek8cm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4F1PmHFsi-SASfluxl95FgttPnilRN0M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "80507381205-vfcji52jj0annmj05ljpqadekp0ek8cm.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "80507381205-rjbmue3ne70luvimfap8tv0sr0q26bfc.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.luna"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

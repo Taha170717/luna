@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:luna/screens/loginscreen.dart';
 import 'dart:async';
 import 'chat_screen.dart';
 
@@ -14,7 +16,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late Animation<double> _logoAnimation;
 
   String displayText = '';
-  final String fullText = 'Luna-Animal Assistant';
+  final String fullText = 'Luna - Animal Assistant';
   int _textIndex = 0;
 
   late AnimationController _barController;
@@ -54,12 +56,24 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       curve: Curves.easeInOut,
     ));
 
-    // Navigate to Chat Screen
-    Future.delayed(const Duration(seconds: 4), () {
+    // Check Login and Navigate
+    _checkLoginStatus();
+  }
+
+  Future<void> _checkLoginStatus() async {
+    await Future.delayed(const Duration(seconds: 4));
+
+    if (FirebaseAuth.instance.currentUser != null) {
+      // User is already logged in
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const ChatScreen()),
       );
-    });
+    } else {
+      // User not logged in
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+    }
   }
 
   @override

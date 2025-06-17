@@ -1,9 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../screens/chat_history_screen.dart';
+import '../screens/loginscreen.dart';
 
 class LunaDrawer extends StatelessWidget {
   final VoidCallback onNewChat;
 
   const LunaDrawer({Key? key, required this.onNewChat}) : super(key: key);
+
+  void _logout(BuildContext context) async {
+    await FirebaseAuth.instance.signOut();
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +41,18 @@ class LunaDrawer extends StatelessWidget {
             title: const Text('New Chat'),
             onTap: onNewChat,
           ),
-          // You can add more options here
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Logout'),
+            onTap: () => _logout(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.history),
+            title: const Text('Chat History'),
+            onTap: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatHistoryScreen()));
+            },
+          ),
         ],
       ),
     );

@@ -1,22 +1,30 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:luna/widgets/drawer_widget.dart';
 import 'package:luna/widgets/message_bubble.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/message.dart';
 import '../widgets/message_input.dart';
+import '../widgets/message_input.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({Key? key}) : super(key: key);
+  final String? chatId;
+
+  const ChatScreen({Key? key, this.chatId}) : super(key: key);
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
+
 
 class _ChatScreenState extends State<ChatScreen> {
   final List<Message> messages = [
@@ -24,11 +32,13 @@ class _ChatScreenState extends State<ChatScreen> {
   ];
 
   File? _selectedImage;
+  final FlutterTts _flutterTts = FlutterTts();
+
   bool _loading = false;
-
   final FocusNode _focusNode = FocusNode();
-
-  // Speech recognition
+  String? _currentChatId;
+  String? _currentChatTitle;
+  final user = FirebaseAuth.instance.currentUser;
   late stt.SpeechToText _speech;
   bool _isListening = false;
   String _spokenText = '';
@@ -38,12 +48,42 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _speech = stt.SpeechToText();
 
+    if (widget.chatId != null) {
+      _currentChatId = widget.chatId;
+      _loadChatHistory();
+    } else {
+      _startNewChat();
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusScope.of(context).requestFocus(_focusNode);
     });
   }
+  void _loadChatHistory() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user!.uid)
+        .collection('chats')
+        .doc(_currentChatId)
+        .collection('messages')
+        .orderBy('timestamp')
+        .get();
 
-  void _resetChat() {
+    final loadedMessages = snapshot.docs.map((doc) {
+      final data = doc.data();
+      return Message(sender: data['sender'], text: data['text']);
+    }).toList();
+
+    setState(() {
+      messages.addAll(loadedMessages);
+    });
+  }
+
+
+
+  void _startNewChat() async {
+    _currentChatId = null; // Reset the chat to allow a new one
+    _currentChatTitle = null;
     setState(() {
       messages.clear();
       messages.add(Message(sender: 'Luna', text: 'How can I help you today? 🐱'));
@@ -55,10 +95,18 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _pickImage() async {
-    final img = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (img != null) setState(() => _selectedImage = File(img.path));
+  String generateChatTitle(String userInput) {
+    if (userInput.trim().isEmpty) return "Chat with Luna";
+
+    // Limit the title to a max of 100 characters for Firebase safety
+    String cleanedInput = userInput.trim();
+    if (cleanedInput.length > 100) {
+      cleanedInput = cleanedInput.substring(0, 100) + '...';
+    }
+
+    return cleanedInput;
   }
+
 
   Future<void> _sendMessage(String userText) async {
     if (userText.trim().isEmpty) return;
@@ -68,15 +116,38 @@ class _ChatScreenState extends State<ChatScreen> {
       _loading = true;
     });
 
+    if (_currentChatId == null) {
+      String title = generateChatTitle(userText);
+      _currentChatId = Uuid().v4();
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('chats')
+          .doc(_currentChatId)
+          .set({
+        'createdAt': Timestamp.now(),
+        'title': title,
+      });
+    }
+
+
+    await _saveMessageToFirestore('User', userText);
+
+    print('🔑 GROQ_API_KEY = ${dotenv.env['GROQ_API_KEY']}');
+
     String? base64Image;
     if (_selectedImage != null) {
-      base64Image = base64Encode(await _selectedImage!.readAsBytes());
+      base64Image = await _selectedImage!.readAsBytes().then(base64Encode);
     }
 
     final body = {
       "model": "meta-llama/llama-4-scout-17b-16e-instruct",
       "messages": [
-        {"role": "system", "content": "You are Luna, an expert animal health assistant."},
+        {
+          "role": "system",
+          "content": "You are Luna, an expert animal health assistant."
+        },
         if (base64Image != null)
           {
             "role": "user",
@@ -96,6 +167,7 @@ class _ChatScreenState extends State<ChatScreen> {
     };
 
     try {
+      debugPrint('➡️ Sending body: $body');
       final resp = await http.post(
         Uri.parse("https://api.groq.com/openai/v1/chat/completions"),
         headers: {
@@ -105,16 +177,38 @@ class _ChatScreenState extends State<ChatScreen> {
         body: jsonEncode(body),
       );
 
+      debugPrint('⬅️ Response status: ${resp.statusCode}');
+      debugPrint('⬅️ Response body: ${resp.body}');
+
       final data = jsonDecode(resp.body);
-      final response = data['choices'][0]['message']['content'] as String;
+      final choices = data['choices'];
+
+      if (choices is List && choices.isNotEmpty) {
+        final first = choices[0];
+        final message = first['message'];
+        final responseText = message is Map ? message['content'] : null;
+
+        if (responseText is String) {
+          setState(() {
+            messages.add(Message(sender: 'Luna', text: responseText));
+          });
+
+          await _saveMessageToFirestore('Luna', responseText);
+        } else {
+          throw Exception('Invalid content structure in response');
+        }
+      } else {
+        throw Exception('No "choices" returned from API');
+      }
+    } catch (e) {
+      debugPrint('🚨 Chat error: $e');
+      final errorMessage = 'Sorry, something went wrong: $e';
 
       setState(() {
-        messages.add(Message(sender: 'Luna', text: response));
+        messages.add(Message(sender: 'Luna', text: errorMessage));
       });
-    } catch (e) {
-      setState(() {
-        messages.add(Message(sender: 'Luna', text: 'Sorry, something went wrong: $e'));
-      });
+
+      await _saveMessageToFirestore('Luna', errorMessage);
     } finally {
       setState(() {
         _loading = false;
@@ -122,6 +216,32 @@ class _ChatScreenState extends State<ChatScreen> {
         _spokenText = '';
       });
     }
+  }
+
+  Future<void> _saveMessageToFirestore(String sender, String text) async {
+    if (_currentChatId == null) return;
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user!.uid)
+        .collection('chats')
+        .doc(_currentChatId)
+        .collection('messages')
+        .add({
+      'sender': sender,
+      'text': text,
+      'timestamp': Timestamp.now(),
+    });
+  }
+  Future<void> _speak(String text) async {
+    await _flutterTts.setLanguage("en-US");
+    await _flutterTts.setPitch(1);
+    await _flutterTts.speak(text);
+  }
+
+  Future<void> _pickImage() async {
+    final img = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (img != null) setState(() => _selectedImage = File(img.path));
   }
 
   void _startListening() async {
@@ -153,7 +273,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      drawer: LunaDrawer(onNewChat: _resetChat),
+      drawer: LunaDrawer(onNewChat: _startNewChat),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 1,
@@ -173,9 +293,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   itemBuilder: (ctx, i) {
                     if (i == messages.length) {
                       return Column(
-                        children: [
-                          const SizedBox(height: 30),
-                          const Text(
+                        children: const [
+                          SizedBox(height: 30),
+                          Text(
                             'Welcome to Luna 🐶',
                             textAlign: TextAlign.center,
                             style: TextStyle(
@@ -184,8 +304,8 @@ class _ChatScreenState extends State<ChatScreen> {
                               color: Color(0xFFFFA726),
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          const Text(
+                          SizedBox(height: 8),
+                          Text(
                             'Ask me anything about your pet’s health!',
                             textAlign: TextAlign.center,
                             style: TextStyle(
@@ -194,11 +314,17 @@ class _ChatScreenState extends State<ChatScreen> {
                               fontWeight: FontWeight.w400,
                             ),
                           ),
-                          const SizedBox(height: 30),
+                          SizedBox(height: 30),
                         ],
                       );
                     } else {
-                      return ChatBubble(message: messages[messages.length - 1 - i]);
+                      return ChatBubble(
+                        message: messages[messages.length - 1 - i],
+                        onSpeak: messages[messages.length - 1 - i].sender == 'Luna'
+                            ? () => _speak(messages[messages.length - 1 - i].text)
+                            : null,
+                      );
+                      ;
                     }
                   },
                 ),
@@ -219,7 +345,7 @@ class _ChatScreenState extends State<ChatScreen> {
               Row(
                 children: [
                   IconButton(
-                    icon: Icon(Icons.image, color: Color(0xFFFFA726)),
+                    icon: const Icon(Icons.image, color: Color(0xFFFFA726)),
                     onPressed: _pickImage,
                   ),
                   IconButton(
