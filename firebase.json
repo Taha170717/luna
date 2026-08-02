@@ -1,0 +1,28 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "luna-cool-project",
+          "appId": "1:80507381205:android:c39e99eabe408fa5f0495c",
+          "fileOutput": "android/app/google-services.json"
+        }
+      }
+    },
+    "dart": {
+      "lib/firebase_options.dart": {
+        "projectId": "luna-cool-project",
+        "configurations": {
+          "android": "1:80507381205:android:c39e99eabe408fa5f0495c",
+          "ios": "1:80507381205:ios:996372cdc228dfbff0495c",
+          "macos": "1:80507381205:ios:996372cdc228dfbff0495c",
+          "web": "1:80507381205:web:be84f898be8a5a9df0495c",
+          "windows": "1:80507381205:web:d5ea3569396dbdc1f0495c"
+        }
+      }
+    }
+  }
+}}
